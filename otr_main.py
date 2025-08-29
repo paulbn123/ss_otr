@@ -11,7 +11,7 @@ import re
 st.set_page_config(page_title="OTR App", 
                    layout="wide",
                    page_icon="🔓",
-                   initial_sidebar_state="collapsed")
+                   initial_sidebar_state="expanded")
 
 
 ###########################################
@@ -49,10 +49,11 @@ footer {visibility: hidden;}
 # Hide the header (including GitHub, Share, etc.) - Modified to not affect sidebar
 st.markdown("""
 <style>
-header[data-testid="stHeader"] {visibility: hidden;}
 /* Ensure sidebar is always visible */
-.css-1d391kg {visibility: visible !important;}
 section[data-testid="stSidebar"] {visibility: visible !important;}
+section[data-testid="stSidebar"] > div {visibility: visible !important;}
+.css-1d391kg {visibility: visible !important;}
+.css-1cypcdb {visibility: visible !important;}
 </style>
 """, unsafe_allow_html=True)
 
