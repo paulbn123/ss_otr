@@ -79,7 +79,7 @@ REQUIRED_OTR_COLUMNS = ['Asset Name', 'SSDB_REF', AREA_UNIT_COLUMN,'Currency Uni
                         'SS Unit Count', 'Avg SS Unit Size', 'SS Revenue', 'Total Rev',
                         'Opex Total', 'EBITDAR', 'EBITDA']
 
-OTR_STRING_COLUMNS = ['Asset Name', 'SSDB_REF', 'Currency Unit']
+OTR_STRING_COLUMNS = ['Asset Name', 'SSDB_REF', 'Currency Unit', 'Area unit']
 OTR_ROUNDED_COLUMNS = ['Staff', 'Marketing', 'Utilities', 'Rates', 'Rent', 'Other_DC']
 OTR_PERCENTAGE_COLUMNS = ['Anc Inc', 'Retail', 'Other_Inc', 'Insurance','SS_Occ % CLA']
 OTR_NUMERIC_COLUMNS = ['Anc Inc', 'Retail', 'Other_Inc', 'Insurance', 'SS_CLA']
@@ -148,6 +148,46 @@ DEFAULT_COLOR_VALUE = 'gray'
 
 # Functions #
 
+def debug_dataframe_state(df, stage_name):
+    """Comprehensive debugging function to track DataFrame state"""
+    print(f"\n=== DEBUG: {stage_name} ===")
+    
+    if df is None:
+        print("❌ DataFrame is None!")
+        return False
+    
+    if df.empty:
+        print("❌ DataFrame is empty!")
+        return False
+    
+    print(f"✅ DataFrame shape: {df.shape}")
+    print(f"✅ DataFrame dtypes:")
+    for col, dtype in df.dtypes.items():
+        print(f"   {col}: {dtype}")
+    
+    # Check for problematic columns
+    problem_cols = []
+    for col in df.columns:
+        if df[col].dtype == 'object':
+            non_null_values = df[col].dropna()
+            if not non_null_values.empty:
+                sample_val = non_null_values.iloc[0]
+                if not isinstance(sample_val, (str, int, float)):
+                    problem_cols.append(f"{col}: {type(sample_val)}")
+    
+    if problem_cols:
+        print(f"⚠️  Problematic column types: {problem_cols}")
+    
+    # Check for NaN patterns
+    nan_counts = df.isna().sum()
+    high_nan_cols = nan_counts[nan_counts > len(df) * 0.5]
+    if not high_nan_cols.empty:
+        print(f"⚠️  High NaN columns (>50%): {high_nan_cols.to_dict()}")
+    
+    return True
+
+
+
 def clean_string_columns_in_df(df, columns):
     """Cleans selected string columns in the input df
     Strips leading/trailing whitespace
@@ -161,27 +201,30 @@ def clean_string_columns_in_df(df, columns):
             # Strip leading/trailing whitespace (handles NaN gracefully)
             df[col] = df[col].str.strip()
         else:
-            raise KeyError(f'!!!!WARNING {col} not found in df columns')
+            raise print(f'!!!!WARNING {col} not found in df columns when converting string columns')
     
     return df
 
-def safe_round_to_thousands(series, default=0):
-    """Safely round values to nearest thousand, handling NaN and infinite values"""
+def safe_round_to_thousands(series, default=np.nan):
+    """Safely round values to nearest thousand, preserving NaN for missing data"""
     try:
         # Convert to numeric, handling errors
         numeric_series = pd.to_numeric(series, errors='coerce')
         
-        # Replace infinite values
+        # Replace infinite values with NaN
         numeric_series = numeric_series.replace([np.inf, -np.inf], np.nan)
         
-        # Fill NaN with default value
-        numeric_series = numeric_series.fillna(default)
+        # Only round non-NaN values
+        mask = pd.notna(numeric_series)
+        result = numeric_series.copy()
+        result.loc[mask] = (numeric_series.loc[mask] / 1000).round() * 1000
         
-        # Round to nearest thousand
-        return (numeric_series / 1000).round().astype(int) * 1000
+        # Ensure float64 dtype (Arrow-compatible and handles NaN)
+        return result.astype('float64')
+        
     except Exception as e:
         st.warning(f"Rounding failed: {str(e)}")
-        return pd.to_numeric(series, errors='coerce').fillna(default)
+        return pd.to_numeric(series, errors='coerce').astype('float64')
 
 
 def convert_areas_based_on_area_type(df, area_cols, area_unit_col=AREA_UNIT_COLUMN):
@@ -278,24 +321,48 @@ def convert_rents_based_on_area_type(df, rent_cols, area_unit_col=AREA_UNIT_COLU
     
     return df
 
-def round_percentage_columns(df, cols_to_round, rounding_factor):
 
-    """Functions rounds percentage numbers so we are not showing exact numbers
-    Assumes inputs are floats as proportion of 1 - ie 10% = 0.1
-    Rounding factor will be in similar units - so 0.6 / 0.25 
-    """
-    if rounding_factor > 0:
-        for col in cols_to_round:
-            if col in df.columns:
-                # ensure numeric first
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-                df[col] = (df[col] / rounding_factor).round() * rounding_factor
-    else: 
-        st.error('!!!WARNING rounding factor not valid')
+def round_percentage_columns(df, cols_to_round, rounding_factor, stage_name="unknown"):
+    """Enhanced percentage rounding with debugging"""
+    print(f"\nDEBUG: round_percentage_columns at {stage_name}")
+    print(f"  Columns to round: {cols_to_round}")
+    print(f"  Rounding factor: {rounding_factor}")
+    
+    if rounding_factor <= 0:
+        print('❌ Invalid rounding factor')
         return df
     
-    return df
-
+    df_copy = df.copy()
+    
+    for col in cols_to_round:
+        if col in df_copy.columns:
+            print(f"  Processing column: {col}")
+            print(f"    Original dtype: {df_copy[col].dtype}")
+            print(f"    Original NaN count: {df_copy[col].isna().sum()}")
+            print(f"    Sample original values: {df_copy[col].dropna().head().tolist()}")
+            
+            # Ensure numeric and handle NaN values
+            df_copy[col] = pd.to_numeric(df_copy[col], errors='coerce')
+            print(f"    After to_numeric NaN count: {df_copy[col].isna().sum()}")
+            
+            # Only round non-NaN values
+            mask = pd.notna(df_copy[col])
+            valid_count = mask.sum()
+            print(f"    Valid (non-NaN) values: {valid_count}")
+            
+            if valid_count > 0:
+                original_values = df_copy.loc[mask, col].copy()
+                df_copy.loc[mask, col] = (df_copy.loc[mask, col] / rounding_factor).round() * rounding_factor
+                print(f"    Sample rounded values: {df_copy.loc[mask, col].head().tolist()}")
+                
+                # Check if rounding created any issues
+                new_nan_count = df_copy[col].isna().sum()
+                if new_nan_count > df.copy()[col].isna().sum():
+                    print(f"    ⚠️  Rounding created additional NaN values!")
+        else:
+            print(f"    ⚠️  Column {col} not found in DataFrame")
+    
+    return df_copy
 
 
 def create_ss_rent_html(row):
@@ -349,11 +416,16 @@ def create_direct_costs_html(row):
     """
     return html
 
+
+# Enhanced read_OTR_file with debugging
 def read_OTR_file(raw_OTR_uploaded_file):
-    """Read and process OTR file into a cleaned Arrow-safe DataFrame"""
+    """Enhanced version of read_OTR_file with comprehensive debugging"""
     try:
+        print("\n🔍 Starting OTR file processing...")
+        
         # Read in the Excel file
         df_raw = pd.read_excel(raw_OTR_uploaded_file, skiprows=OTR_ROWS_TO_SKIP, sheet_name=0)
+        # debug_dataframe_state(df_raw, "After Excel read")
 
         if df_raw is None or df_raw.empty:
             st.error("OTR file is empty or unreadable")
@@ -364,60 +436,64 @@ def read_OTR_file(raw_OTR_uploaded_file):
         if missing_cols:
             st.error(f"❌ Missing columns in OTR: {missing_cols}")
             return None
+        print(f"✅ All required columns present")
 
-        # Clean string columns + ensure Currency unit is all UC and all Area Units LC
+        df_raw = df_raw[REQUIRED_OTR_COLUMNS]
+        if 'SSDB_REF' in df_raw.columns:
+            df_raw['SSDB_REF'] = df_raw['SSDB_REF'].fillna(-9999).astype('int64').astype('string')
+            df_raw = df_raw[df_raw['SSDB_REF'] != '-9999']
+        # Clean string columns
         df_raw = clean_string_columns_in_df(df_raw, OTR_STRING_COLUMNS)
+        # debug_dataframe_state(df_raw, "After string cleaning")
+
+        # Process currency and area units
         if "Currency Unit" in df_raw.columns:
             df_raw["Currency Unit"] = df_raw["Currency Unit"].str.upper()
         if AREA_UNIT_COLUMN in df_raw.columns:
             df_raw[AREA_UNIT_COLUMN] = df_raw[AREA_UNIT_COLUMN].str.lower()
 
-        # Clean numeric columns
-            all_numeric_columns = OTR_ROUNDED_COLUMNS + OTR_PERCENTAGE_COLUMNS + OTR_NUMERIC_COLUMNS + OTR_FLOAT_COLUMNS + ['Year']
-            for col in all_numeric_columns:
-                if col in df_raw.columns:
-                    df_raw[col] = pd.to_numeric(df_raw[col], errors="coerce")    
-
         # Extract year from Valuation date
         if "Valuation date" in df_raw.columns:
+            print("Processing Valuation date...")
             df_raw["Year"] = pd.to_datetime(df_raw["Valuation date"], errors="coerce").dt.year
-            # By forcing it to int64 it won't be rendered with commas or DP - does not work !! string in df_display
-            df_raw["Year"] = df_raw["Year"].astype("Int64")
+            # Keep as float64 to avoid Arrow issues in session state
+            df_raw["Year"] = df_raw["Year"].astype("float64")
 
-        # Round selected numeric columns to thousands
+            df_raw.drop(columns=['Valuation date'], inplace=True)
+
+        # Round selected numeric columns with debugging
+        print("\n🔄 Rounding numeric columns...")
         for col in OTR_ROUNDED_COLUMNS:
             if col in df_raw.columns:
-                df_raw[col] = safe_round_to_thousands(df_raw[col])  
+                df_raw[col] = safe_round_to_thousands(df_raw[col])
 
-        # clean and round current rent 
+        # debug_dataframe_state(df_raw, "After rounding numeric columns")
+
+        # Convert rents with debugging
+        print("\n🔄 Converting rent columns...")
         df_raw = convert_rents_based_on_area_type(df_raw, OTR_RENT_COLS, area_unit_col=AREA_UNIT_COLUMN)
-        current_rent_cols = [col for col in df_raw.columns if col.startswith('SS_Current')]
-        if current_rent_cols:
-            print(f'current_rent_cols: {current_rent_cols}')
+        # debug_dataframe_state(df_raw, "After rent conversion")
 
-        # round the percentage columns
-        print('Pre perc rounded:')
-        print(df_raw[['SS_Occ % CLA', 'Anc Inc', 'Retail', 'Other_Inc', 'Insurance']].head())
+        # Round percentage columns with debugging
+        print("\n🔄 Rounding percentage columns...")
+        df_raw = round_percentage_columns(df_raw, ['SS_Occ % CLA'], ROUNDING_FACTOR_ONE_PERC, "SS_Occ % CLA")
+        # debug_dataframe_state(df_raw, "After SS_Occ % CLA rounding")
+        
+        df_raw = round_percentage_columns(df_raw, ['Anc Inc', 'Retail', 'Other_Inc', 'Insurance'], ROUNDING_FACTOR_QUARTER_PERC, "Other percentages")
+        # debug_dataframe_state(df_raw, "After all percentage rounding")
 
-        df_raw = round_percentage_columns(df_raw, ['SS_Occ % CLA'] , ROUNDING_FACTOR_ONE_PERC)
-        df_raw = round_percentage_columns(df_raw, ['Anc Inc', 'Retail', 'Other_Inc', 'Insurance'] , ROUNDING_FACTOR_QUARTER_PERC)
-
-        print('Post perc rounded:')
-        print(df_raw[['SS_Occ % CLA', 'Anc Inc', 'Retail', 'Other_Inc', 'Insurance']].head())
-
-        # print(f'{df_raw:}')
-        # print(df_raw[['SS_Current Rent', 'SS_Current Rent_sqm', 'SS_Current Rent_sqft']].head())
-
-        # with the data cleaned now adjust areas in _sqm and sqft
-        df_raw =  convert_areas_based_on_area_type(df_raw, OTR_AREA_COLS, area_unit_col=AREA_UNIT_COLUMN)
-
-        # Normalize dtypes (Arrow safe)
-        df_raw = df_raw.convert_dtypes()
-
-        st.success(f"✅ Successfully loaded OTR with {df_raw.shape[0]} rows")  # Fixed: was df.shape[0]
-        return df_raw  # Fixed: was return df
+        # Convert areas with debugging
+        print("\n🔄 Converting area columns...")
+        df_raw = convert_areas_based_on_area_type(df_raw, OTR_AREA_COLS, area_unit_col=AREA_UNIT_COLUMN)
+        # debug_dataframe_state(df_raw, "After area conversion")
+     
+        print(f"\n✅ Successfully processed OTR with {df_raw.shape[0]} rows")
+        return df_raw
 
     except Exception as e:
+        print(f"\n❌ Error in read_OTR_file: {str(e)}")
+        import traceback
+        traceback.print_exc()
         st.error(f"Error loading OTR data: {str(e)}")
         return None
 
@@ -432,6 +508,9 @@ def read_ssdb_file(raw_SSDB_uploaded_file):
             if missing_cols:
                 st.error(f'Missing columns in SSDB: {missing_cols}')
                 return None
+
+            if 'SSDB_REF' in df_raw.columns:
+                df_raw['SSDB_REF'] = df_raw['SSDB_REF'].fillna(-9999).astype('int64').astype('string')
 
             df_raw = clean_string_columns_in_df(df_raw, SSDB_STRING_COLUMNS)
 
@@ -579,16 +658,27 @@ if st.session_state.df_OTR_Selected_Area is None:
         )
     
     if uploaded_OTR_file and uploaded_SSDB_file:
-        df_OTR = read_OTR_file(uploaded_OTR_file)
+        df_OTR = read_OTR_file(uploaded_OTR_file)  
+        
+        # if df_OTR is not None:
+        #     debug_dataframe_state(df_OTR, "After OTR processing")
+        # else:
+        #     print (f'!!!WARNING df_OTR is None')
+        
         df_SSDB = read_ssdb_file(uploaded_SSDB_file)
         
-        if df_OTR is not None and df_SSDB is not None:
-            # Join dataframes
-            df_joined = pd.merge(df_SSDB, df_OTR, on='SSDB_REF', how='inner')
+        # print(f'df_joined')
+        # print(f'{df_SSDB.head(3)}')
+        # print(f'{df_OTR.head(3)}')
 
+        if df_OTR is not None and df_SSDB is not None:
+            df_joined = pd.merge(df_SSDB, df_OTR, on='SSDB_REF', how='inner')
+            
             # Add HTML
             df_joined["html_ss_rent"] = df_joined.apply(create_ss_rent_html, axis=1)
             df_joined["html_direct_costs"] = df_joined.apply(create_direct_costs_html, axis=1)
+            
+            # debug_dataframe_state(df_joined, "After merge")
             
             # print(f'df_joined.columns: {df_joined.columns}')
             # print(df_joined[['storename', 'Area unit', 'SS_Current Rent', 'SS_Current Rent_sqm', 'SS_Current Rent_sqft']].head(5))
@@ -688,17 +778,39 @@ if st.session_state.df_OTR_Selected_Area is not None:
             else:
                 st.session_state.size_column = st.radio("Marker Size Based On", 
                                                        ['Staff', 'Marketing', 'Utilities', 'Rates', 'Rent', 'Other_DC'],
-                                                       index=4)
+                                                       index=0)
             
-            # Size and occupancy filters
-            occ_min = float(st.session_state.df_OTR_Selected_Area['SS_Occ % CLA'].min()) * 100
-            occ_max = float(st.session_state.df_OTR_Selected_Area['SS_Occ % CLA'].max()) * 100
+            #############################################################################
+            ############################################################################
+          
+            # # Size and occupancy filters - have added this in as arrow is pernickety about nans
+            non_na_series = st.session_state.df_OTR_Selected_Area['SS_Occ % CLA'].dropna()
+
+            if not non_na_series.empty:
+                occ_min = non_na_series.min() * 100
+                occ_max = non_na_series.max() * 100
+            else:
+                occ_min = 0
+                occ_max = 1
+
             occ_filter = st.slider("Occ % CLA Filter", occ_min, occ_max, (occ_min, occ_max))
             
-            ss_cla_min = int(st.session_state.df_OTR_Selected_Area['SS_CLA'].min())
-            ss_cla_max = int(st.session_state.df_OTR_Selected_Area['SS_CLA'].max())
+            # Now clean up Min max store sizes
+            non_na_series = st.session_state.df_OTR_Selected_Area['SS_CLA'].dropna()
+            
+            if not non_na_series.empty:
+                ss_cla_min = non_na_series.min()
+                ss_cla_max = non_na_series.max()
+            else:
+                ss_cla_min = 0
+                ss_cla_max = 100_000
+
             ss_cla_filter = st.slider("SS CLA Filter", ss_cla_min, ss_cla_max, (ss_cla_min, ss_cla_max))
-    
+
+            ##############################################################
+            ##############################################################
+
+
     # Apply filters
     df_filtered = st.session_state.df_OTR_Selected_Area.copy()
     
