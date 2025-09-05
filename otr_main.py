@@ -372,7 +372,11 @@ def create_ss_rent_html(row):
     storename = row.get('storename', 'Unknown Store')
     ss_cla = f"{row.get('SS_CLA'):,.0f}" if pd.notna(row.get('SS_CLA')) else 'N/A'
     occ_pct = f"{row.get('SS_Occ % CLA')*100:,.1f}%" if pd.notna(row.get('SS_Occ % CLA')) else 'N/A'
-    current_rent = f"{row.get('SS_Current Rent'):,.0f}" if pd.notna(row.get('SS_Current Rent')) else 'N/A'
+    # Have the rent data in sq m and sq ft - note this is hardcoded from the OTR_RENT_COLS 
+    current_rent_sqm = f"{row.get('SS_Current Rent_sqm'):,.0f}" if pd.notna(row.get('SS_Current Rent_sqm')) else 'N/A'
+    current_rent_sqft = f"{row.get('SS_Current Rent_sqft'):,.0f}" if pd.notna(row.get('SS_Current Rent_sqft')) else 'N/A'
+    currency_unit = f"{row.get('Currency Unit', 'N/A')}" 
+    year = f"{row.get('Year'):.0f}" if pd.notna(row.get('Year')) else 'N/A'
     anc_inc = f"{row.get('Anc Inc')*100:,.1f}%" if pd.notna(row.get('Anc Inc')) else 'N/A'
     retail = f"{row.get('Retail')*100:,.1f}%" if pd.notna(row.get('Retail')) else 'N/A'
     other = f"{row.get('Other_Inc')*100:,.1f}%" if pd.notna(row.get('Other_Inc')) else 'N/A'
@@ -382,7 +386,8 @@ def create_ss_rent_html(row):
     html = f"""
     <div style="font-family: Arial, sans-serif; padding: 10px; line-height: {HTML_LINE_HEIGHT}; font-size: {HTML_BODY_FONT_SIZE}px">
         <h4 style="margin-bottom: 10px; font-size: {HTML_H4_FONT_SIZE}px"><strong>{storename}</strong></h4>
-        <p  style="font-size: {HTML_H4_FONT_SIZE}px"><strong>Current Rent: {current_rent} per {area_unit}</strong></p>
+        <p  style="font-size: {HTML_H4_FONT_SIZE}px"><strong>Current Rent ({currency_unit}/pa): {current_rent_sqft} psf / {current_rent_sqm} psm</strong></p>
+        <p>Year: {year}</p>
         <p><strong>SS CLA:</strong> {ss_cla} {area_unit}</p>
         <p><strong>Occ % CLA:</strong> {occ_pct}</p>
         <p><strong>Anc Inc:</strong> {anc_inc}</p>
