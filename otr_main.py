@@ -374,7 +374,7 @@ def create_ss_rent_html(row):
     occ_pct = f"{row.get('SS_Occ % CLA')*100:,.1f}%" if pd.notna(row.get('SS_Occ % CLA')) else 'N/A'
     # Have the rent data in sq m and sq ft - note this is hardcoded from the OTR_RENT_COLS 
     current_rent_sqm = f"{row.get('SS_Current Rent_sqm'):,.0f}" if pd.notna(row.get('SS_Current Rent_sqm')) else 'N/A'
-    current_rent_sqft = f"{row.get('SS_Current Rent_sqft'):,.0f}" if pd.notna(row.get('SS_Current Rent_sqft')) else 'N/A'
+    current_rent_sqft = f"{row.get('SS_Current Rent_sqft'):,.2f}" if pd.notna(row.get('SS_Current Rent_sqft')) else 'N/A'
     currency_unit = f"{row.get('Currency Unit', 'N/A')}" 
     year = f"{row.get('Year'):.0f}" if pd.notna(row.get('Year')) else 'N/A'
     anc_inc = f"{row.get('Anc Inc')*100:,.1f}%" if pd.notna(row.get('Anc Inc')) else 'N/A'
