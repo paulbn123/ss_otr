@@ -132,7 +132,7 @@ DISPLAY_COLUMNS_SS_RENT = ['Store name', 'Year', 'SS_CLA', 'SS_Occ % CLA', 'SS_C
                                'Anc Inc', 'Retail', 'Other_Inc', 'Insurance']
 DISPLAY_COLUMNS_DIRECT_COSTS = ['Store name', 'Year', 'Staff', 'Marketing', 'Utilities', 'Rates', 'Rent']
 
-TILE_LAYER = 'CartoDB Positron'
+TILE_LAYER =   'OpenStreetMap' # 'CartoDB Positron' << this now requires an api key
 
 HTML_BODY_FONT_SIZE = 8
 HTML_H4_FONT_SIZE = 10
